@@ -2,6 +2,7 @@
  * HTTP methods implementation
  */
 
+use crate::cgi::CgiExecutor;
 use crate::config::{Config, RouteConfig};
 use crate::error::{ServerError, ServerResult, HttpStatus};
 use crate::error::pages::ErrorPageManager;
@@ -15,6 +16,7 @@ pub struct MethodHandler {
     router: Router,
     static_server: StaticFileServer,
     error_manager: ErrorPageManager,
+    cgi_executor: CgiExecutor,
 }
 
 impl MethodHandler {
@@ -30,6 +32,7 @@ impl MethodHandler {
             router: Router::new(&config),
             static_server: StaticFileServer::new(),
             error_manager,
+            cgi_executor: CgiExecutor::new(),
         }
     }
 
@@ -70,10 +73,15 @@ impl MethodHandler {
     }
 
     /// Handle GET requests
-    fn handle_get(&self, request: &HttpRequest, _server: &crate::config::ServerConfig, route: &RouteConfig) -> ServerResult<HttpResponse> {
+    fn handle_get(&self, request: &HttpRequest, server: &crate::config::ServerConfig, route: &RouteConfig) -> ServerResult<HttpResponse> {
         // Handle redirects
         if let Some(redirect_url) = &route.redirect {
             return Ok(HttpResponse::redirect(redirect_url, false));
+        }
+
+        // Handle CGI first (takes precedence)
+        if route.cgi.is_some() {
+            return self.handle_cgi(request, server, route);
         }
 
         // Get root directory
@@ -103,15 +111,15 @@ impl MethodHandler {
     }
 
     /// Handle POST requests
-    fn handle_post(&self, request: &HttpRequest, _server: &crate::config::ServerConfig, route: &RouteConfig) -> ServerResult<HttpResponse> {
+    fn handle_post(&self, request: &HttpRequest, server: &crate::config::ServerConfig, route: &RouteConfig) -> ServerResult<HttpResponse> {
+        // Handle CGI first (takes precedence)
+        if route.cgi.is_some() {
+            return self.handle_cgi(request, server, route);
+        }
+
         // Handle file uploads
         if route.upload_enabled {
             return self.handle_file_upload(request, route);
-        }
-
-        // Handle CGI
-        if let Some(_cgi_interpreter) = &route.cgi {
-            return self.handle_cgi(request, route);
         }
 
         // Default POST handling
@@ -178,8 +186,32 @@ impl MethodHandler {
     }
 
     /// Handle CGI requests
-    fn handle_cgi(&self, _request: &HttpRequest, _route: &RouteConfig) -> ServerResult<HttpResponse> {
-        // TODO: Implement CGI execution
-        Ok(HttpResponse::text(HttpStatus::Ok, "CGI not yet implemented"))
+    fn handle_cgi(&self, request: &HttpRequest, server: &crate::config::ServerConfig, route: &RouteConfig) -> ServerResult<HttpResponse> {
+        // Get root directory
+        let root = route.root.as_ref()
+            .ok_or_else(|| ServerError::Config("CGI route has no root directory".to_string()))?;
+
+        // Resolve script path
+        let script_path = self.static_server.resolve_path(root, &request.path, &route.path)?;
+
+        // Check if script exists
+        if !script_path.exists() {
+            return Ok(self.error_manager.generate_error_response(HttpStatus::NotFound, Some("CGI script not found")));
+        }
+
+        if !script_path.is_file() {
+            return Ok(self.error_manager.generate_error_response(HttpStatus::Forbidden, Some("Not a valid CGI script")));
+        }
+
+        // Execute CGI script
+        let script_path_str = script_path.to_string_lossy();
+        Ok(self.cgi_executor.execute(request, server, route, &script_path_str)
+            .unwrap_or_else(|e| {
+                eprintln!("CGI execution error: {}", e);
+                self.error_manager.generate_error_response(
+                    HttpStatus::InternalServerError,
+                    Some("CGI script execution failed")
+                )
+            }))
     }
 }
