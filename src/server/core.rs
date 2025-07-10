@@ -4,6 +4,7 @@
 
 use crate::config::Config;
 use crate::error::{ServerError, ServerResult, HttpStatus};
+use crate::error::pages::ErrorPageManager;
 use crate::http::{HttpRequestParser, HttpResponse};
 use crate::http::methods::MethodHandler;
 use crate::server::connection::{ConnectionManager, ConnectionState};
@@ -21,6 +22,7 @@ pub struct Server {
     server_sockets: HashMap<RawFd, (String, u16)>, // fd -> (host, port)
     connection_manager: ConnectionManager,
     method_handler: MethodHandler,
+    error_manager: ErrorPageManager,
     running: bool,
 }
 
@@ -31,12 +33,20 @@ impl Server {
         let connection_manager = ConnectionManager::new(30); // 30 second timeout
         let method_handler = MethodHandler::new(config.clone());
 
+        // Create error manager from first server's configuration
+        let error_manager = if let Some(server) = config.servers.first() {
+            ErrorPageManager::from_config(server)
+        } else {
+            ErrorPageManager::new()
+        };
+
         Ok(Server {
             config,
             epoll,
             server_sockets: HashMap::new(),
             connection_manager,
             method_handler,
+            error_manager,
             running: false,
         })
     }
@@ -186,7 +196,7 @@ impl Server {
                         }
                         Err(e) => {
                             eprintln!("HTTP parsing error on fd {}: {}", fd, e);
-                            self.send_error_response(fd, HttpStatus::BadRequest)?;
+                            self.send_error_response(fd, HttpStatus::BadRequest, Some("Invalid HTTP request"))?;
                         }
                     }
                 }
@@ -234,15 +244,15 @@ impl Server {
         let response = self.method_handler.handle_request(&request)
             .unwrap_or_else(|e| {
                 eprintln!("Error processing request: {}", e);
-                HttpResponse::error(HttpStatus::InternalServerError, Some("Internal server error"))
+                self.error_manager.generate_error_response(HttpStatus::InternalServerError, Some("Internal server error"))
             });
 
         self.send_response(fd, response, request.keep_alive())
     }
 
     /// Send an error response
-    fn send_error_response(&mut self, fd: RawFd, status: HttpStatus) -> ServerResult<()> {
-        let response = HttpResponse::error(status, None);
+    fn send_error_response(&mut self, fd: RawFd, status: HttpStatus, message: Option<&str>) -> ServerResult<()> {
+        let response = self.error_manager.generate_error_response(status, message);
         self.send_response(fd, response, false)
     }
 

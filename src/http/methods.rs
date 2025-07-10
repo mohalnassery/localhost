@@ -4,6 +4,7 @@
 
 use crate::config::{Config, RouteConfig};
 use crate::error::{ServerError, ServerResult, HttpStatus};
+use crate::error::pages::ErrorPageManager;
 use crate::http::{HttpRequest, HttpResponse};
 use crate::routing::{Router, StaticFileServer};
 use std::fs;
@@ -13,13 +14,22 @@ use std::path::{Path, PathBuf};
 pub struct MethodHandler {
     router: Router,
     static_server: StaticFileServer,
+    error_manager: ErrorPageManager,
 }
 
 impl MethodHandler {
     pub fn new(config: Config) -> Self {
+        // Use the first server's error pages for the error manager
+        let error_manager = if let Some(server) = config.servers.first() {
+            ErrorPageManager::from_config(server)
+        } else {
+            ErrorPageManager::new()
+        };
+
         Self {
             router: Router::new(&config),
             static_server: StaticFileServer::new(),
+            error_manager,
         }
     }
 
@@ -29,10 +39,21 @@ impl MethodHandler {
         let host = request.get_header("host").map(|s| s.as_str());
         let (server, route) = self.router.find_route(host, &request.path)?;
 
+        // Check request body size limits
+        if request.body.len() > server.max_body_size {
+            return Ok(self.error_manager.generate_error_response(
+                HttpStatus::RequestEntityTooLarge,
+                Some(&format!("Request body size ({} bytes) exceeds limit ({} bytes)",
+                    request.body.len(), server.max_body_size))
+            ));
+        }
+
         // Check if method is allowed
         if !route.methods.contains(&request.method.as_str().to_string()) {
-            return Ok(HttpResponse::error(HttpStatus::MethodNotAllowed,
-                Some(&format!("Method {} not allowed for this route", request.method.as_str()))));
+            return Ok(self.error_manager.generate_error_response(
+                HttpStatus::MethodNotAllowed,
+                Some(&format!("Method {} not allowed for this route", request.method.as_str()))
+            ));
         }
 
         // Handle based on method
@@ -41,8 +62,10 @@ impl MethodHandler {
             crate::http::HttpMethod::POST => self.handle_post(request, server, route),
             crate::http::HttpMethod::DELETE => self.handle_delete(request, server, route),
             crate::http::HttpMethod::HEAD => self.handle_head(request, server, route),
-            _ => Ok(HttpResponse::error(HttpStatus::MethodNotAllowed,
-                Some(&format!("Method {} not implemented", request.method.as_str())))),
+            _ => Ok(self.error_manager.generate_error_response(
+                HttpStatus::MethodNotAllowed,
+                Some(&format!("Method {} not implemented", request.method.as_str()))
+            )),
         }
     }
 
@@ -62,7 +85,7 @@ impl MethodHandler {
 
         // Check if path exists
         if !file_path.exists() {
-            return Ok(HttpResponse::error(HttpStatus::NotFound, Some("File not found")));
+            return Ok(self.error_manager.generate_error_response(HttpStatus::NotFound, Some("File not found")));
         }
 
         // Handle directories
@@ -102,19 +125,23 @@ impl MethodHandler {
         let file_path = self.static_server.resolve_path(root, &request.path, &route.path)?;
 
         if !file_path.exists() {
-            return Ok(HttpResponse::error(HttpStatus::NotFound, Some("File not found")));
+            return Ok(self.error_manager.generate_error_response(HttpStatus::NotFound, Some("File not found")));
         }
 
         // Only allow deletion in upload directories for security
         if !route.upload_enabled {
-            return Ok(HttpResponse::error(HttpStatus::Forbidden,
-                Some("Deletion not allowed in this directory")));
+            return Ok(self.error_manager.generate_error_response(
+                HttpStatus::Forbidden,
+                Some("Deletion not allowed in this directory")
+            ));
         }
 
         match fs::remove_file(&file_path) {
             Ok(_) => Ok(HttpResponse::text(HttpStatus::NoContent, "")),
-            Err(_) => Ok(HttpResponse::error(HttpStatus::InternalServerError,
-                Some("Failed to delete file"))),
+            Err(_) => Ok(self.error_manager.generate_error_response(
+                HttpStatus::InternalServerError,
+                Some("Failed to delete file")
+            )),
         }
     }
 
