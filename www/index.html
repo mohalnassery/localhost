@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Localhost HTTP Server</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .feature {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-left: 4px solid #007bff;
+        }
+        .test-links {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .test-links a {
+            display: block;
+            padding: 10px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .test-links a:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Localhost HTTP Server</h1>
+        <p>Welcome to the production-ready HTTP/1.1 server implementation in Rust!</p>
+        
+        <div class="feature">
+            <h3>✨ Features</h3>
+            <ul>
+                <li>HTTP/1.1 protocol support</li>
+                <li>GET, POST, DELETE methods</li>
+                <li>Static file serving</li>
+                <li>CGI support</li>
+                <li>Session and cookie management</li>
+                <li>File upload capabilities</li>
+                <li>Custom error pages</li>
+                <li>Multi-server configuration</li>
+            </ul>
+        </div>
+        
+        <div class="feature">
+            <h3>🧪 Test Links</h3>
+            <div class="test-links">
+                <a href="/static/">Static Files</a>
+                <a href="/upload">File Upload</a>
+                <a href="/cgi-bin/">CGI Scripts</a>
+                <a href="/nonexistent">404 Test</a>
+            </div>
+        </div>
+        
+        <div class="feature">
+            <h3>📊 Server Info</h3>
+            <p><strong>Server:</strong> Localhost HTTP Server v0.1.0</p>
+            <p><strong>Protocol:</strong> HTTP/1.1</p>
+            <p><strong>Architecture:</strong> Single-threaded epoll-based I/O</p>
+        </div>
+    </div>
+</body>
+</html>

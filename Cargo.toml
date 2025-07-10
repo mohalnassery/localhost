@@ -1,0 +1,27 @@
+[package]
+name = "localhost-http-server"
+version = "0.1.0"
+edition = "2021"
+authors = ["HTTP Server Team"]
+description = "A production-ready HTTP/1.1 server implementation in Rust"
+license = "MIT"
+
+[dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+# Test dependencies will be added as needed
+
+[[bin]]
+name = "localhost-server"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 0
+debug = true
