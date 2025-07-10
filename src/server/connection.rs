@@ -4,6 +4,7 @@
 
 use crate::http::HttpRequestParser;
 use crate::utils::buffer::Buffer;
+use crate::utils::{TimeoutManager, ConnectionState as TimeoutConnectionState, ResourceMonitor};
 use std::collections::HashMap;
 use std::os::unix::io::RawFd;
 use std::time::{Duration, Instant};
@@ -74,6 +75,8 @@ impl Connection {
 pub struct ConnectionManager {
     connections: HashMap<RawFd, Connection>,
     timeout: Duration,
+    timeout_manager: TimeoutManager,
+    resource_monitor: ResourceMonitor,
 }
 
 impl ConnectionManager {
@@ -81,13 +84,25 @@ impl ConnectionManager {
         Self {
             connections: HashMap::new(),
             timeout: Duration::from_secs(timeout_seconds),
+            timeout_manager: TimeoutManager::with_defaults(),
+            resource_monitor: ResourceMonitor::new(),
         }
     }
 
     /// Add a new connection
-    pub fn add_connection(&mut self, fd: RawFd) {
+    pub fn add_connection(&mut self, fd: RawFd) -> Result<(), String> {
+        // Check if we can add more connections
+        if let Err(e) = self.timeout_manager.add_connection(fd) {
+            return Err(e);
+        }
+
         let connection = Connection::new(fd);
         self.connections.insert(fd, connection);
+
+        // Update resource monitor
+        self.resource_monitor.update_peak_connections(self.connections.len());
+
+        Ok(())
     }
 
     /// Get a connection by file descriptor
@@ -102,6 +117,10 @@ impl ConnectionManager {
 
     /// Remove a connection
     pub fn remove_connection(&mut self, fd: RawFd) -> Option<Connection> {
+        // Remove from timeout manager
+        self.timeout_manager.remove_connection(fd);
+
+        // Remove from connections
         self.connections.remove(&fd)
     }
 
@@ -134,5 +153,64 @@ impl ConnectionManager {
     /// Check if a connection exists
     pub fn has_connection(&self, fd: RawFd) -> bool {
         self.connections.contains_key(&fd)
+    }
+
+    /// Update connection activity
+    pub fn update_activity(&mut self, fd: RawFd, bytes_transferred: usize, is_read: bool) {
+        self.timeout_manager.update_activity(fd, bytes_transferred, is_read);
+
+        if let Some(connection) = self.connections.get_mut(&fd) {
+            connection.last_activity = Instant::now();
+        }
+    }
+
+    /// Update connection state
+    pub fn update_connection_state(&mut self, fd: RawFd, state: TimeoutConnectionState) {
+        self.timeout_manager.update_state(fd, state);
+    }
+
+    /// Record a completed request
+    pub fn record_request(&mut self, fd: RawFd, bytes_transferred: usize) {
+        self.timeout_manager.increment_requests(fd);
+        self.resource_monitor.record_request(bytes_transferred);
+
+        if let Some(connection) = self.connections.get_mut(&fd) {
+            connection.request_count += 1;
+            connection.last_activity = Instant::now();
+        }
+    }
+
+    /// Record an error
+    pub fn record_error(&mut self) {
+        self.resource_monitor.record_error();
+    }
+
+    /// Get timed out connections
+    pub fn get_timed_out_connections(&self) -> Vec<RawFd> {
+        self.timeout_manager.get_timed_out_connections()
+    }
+
+    /// Check if at connection limit
+    pub fn is_at_limit(&self) -> bool {
+        self.timeout_manager.is_at_limit()
+    }
+
+    /// Get timeout statistics
+    pub fn get_timeout_stats(&self) -> crate::utils::TimeoutStats {
+        self.timeout_manager.get_stats()
+    }
+
+    /// Get resource statistics
+    pub fn get_resource_stats(&self) -> crate::utils::ResourceStats {
+        self.resource_monitor.get_stats()
+    }
+
+    /// Cleanup expired connections
+    pub fn cleanup_expired(&mut self) -> Vec<RawFd> {
+        let timed_out = self.get_timed_out_connections();
+        for fd in &timed_out {
+            self.remove_connection(*fd);
+        }
+        timed_out
     }
 }

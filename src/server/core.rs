@@ -109,6 +109,9 @@ impl Server {
             // Wait for events with 1 second timeout
             let event_count = self.epoll.wait(&mut events, 1000)?;
 
+            // Check for timed out connections
+            let _ = self.cleanup_timed_out_connections();
+
             // Process events
             for i in 0..event_count {
                 let event = &events[i];
@@ -165,7 +168,17 @@ impl Server {
                     self.epoll.add(client_fd, EPOLLIN)?;
 
                     // Add to connection manager
-                    self.connection_manager.add_connection(client_fd);
+                    match self.connection_manager.add_connection(client_fd) {
+                        Ok(()) => {
+                            println!("New connection accepted: fd {}", client_fd);
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to add connection {}: {}", client_fd, e);
+                            self.connection_manager.record_error();
+                            close_socket(client_fd);
+                            self.epoll.remove(client_fd)?;
+                        }
+                    }
                 }
                 None => break, // No more connections to accept
             }
@@ -186,10 +199,17 @@ impl Server {
                 Ok(bytes_read) => {
                     // Try to parse HTTP request
                     let data = connection.read_buffer.readable_data();
+                    let data_len = data.len();
                     match connection.http_parser.parse(data) {
                         Ok(Some(request)) => {
                             // Consume the parsed data from buffer
-                            connection.read_buffer.consume(data.len());
+                            connection.read_buffer.consume(data_len);
+
+                            // Drop the connection reference before calling update_activity
+                            drop(connection);
+
+                            // Update connection activity
+                            self.connection_manager.update_activity(fd, data_len, true);
 
                             // Process the request and generate response
                             self.process_http_request(fd, request)?;
@@ -199,6 +219,7 @@ impl Server {
                         }
                         Err(e) => {
                             eprintln!("HTTP parsing error on fd {}: {}", fd, e);
+                            self.connection_manager.record_error();
                             self.send_error_response(fd, HttpStatus::BadRequest, Some("Invalid HTTP request"))?;
                         }
                     }
@@ -250,6 +271,10 @@ impl Server {
                 self.error_manager.generate_error_response(HttpStatus::InternalServerError, Some("Internal server error"))
             });
 
+        // Record the completed request
+        let response_size = response.to_bytes().len();
+        self.connection_manager.record_request(fd, response_size);
+
         self.send_response(fd, response, request.keep_alive())
     }
 
@@ -285,12 +310,14 @@ impl Server {
     }
 
     /// Cleanup timed out connections
-    fn cleanup_timed_out_connections(&mut self) {
-        let timed_out = self.connection_manager.cleanup_timed_out();
+    fn cleanup_timed_out_connections(&mut self) -> ServerResult<()> {
+        let timed_out = self.connection_manager.cleanup_expired();
         for fd in timed_out {
+            println!("Connection {} timed out, cleaning up", fd);
             let _ = self.epoll.remove(fd);
             close_socket(fd);
         }
+        Ok(())
     }
 
     /// Shutdown the server
@@ -312,6 +339,14 @@ impl Server {
         println!("Server shutdown complete");
 
         Ok(())
+    }
+
+    /// Get server statistics
+    pub fn get_stats(&self) -> (crate::utils::TimeoutStats, crate::utils::ResourceStats) {
+        (
+            self.connection_manager.get_timeout_stats(),
+            self.connection_manager.get_resource_stats(),
+        )
     }
 }
 
