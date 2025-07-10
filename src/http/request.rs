@@ -3,6 +3,7 @@
  */
 
 use crate::error::{ServerError, ServerResult};
+use crate::session::CookieJar;
 use std::collections::HashMap;
 use std::str;
 
@@ -79,6 +80,7 @@ pub struct HttpRequest {
     pub body: Vec<u8>,
     pub query_params: HashMap<String, String>,
     pub path: String,
+    pub cookies: CookieJar,
 }
 
 impl HttpRequest {
@@ -91,6 +93,7 @@ impl HttpRequest {
             body: Vec::new(),
             query_params: HashMap::new(),
             path: "/".to_string(),
+            cookies: CookieJar::new(),
         }
     }
 
@@ -293,6 +296,12 @@ impl HttpRequestParser {
             if let Some(colon_pos) = line.find(':') {
                 let name = line[..colon_pos].trim().to_lowercase();
                 let value = line[colon_pos + 1..].trim().to_string();
+
+                // Parse cookies if this is a Cookie header
+                if name == "cookie" {
+                    self.request.cookies.parse_cookie_header(&value);
+                }
+
                 self.request.headers.insert(name, value);
             } else {
                 return Err(ServerError::Http(format!("Invalid header line: {}", line)));

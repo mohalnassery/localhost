@@ -4,6 +4,7 @@
 
 use crate::error::HttpStatus;
 use crate::http::request::HttpVersion;
+use crate::session::{Cookie, CookieJar};
 use std::collections::HashMap;
 use std::fmt::Write;
 
@@ -14,6 +15,7 @@ pub struct HttpResponse {
     pub status: HttpStatus,
     pub headers: HashMap<String, String>,
     pub body: Vec<u8>,
+    pub cookies: Vec<Cookie>,
 }
 
 impl HttpResponse {
@@ -24,6 +26,7 @@ impl HttpResponse {
             status,
             headers: HashMap::new(),
             body: Vec::new(),
+            cookies: Vec::new(),
         };
 
         // Add default headers
@@ -63,6 +66,26 @@ impl HttpResponse {
         }
     }
 
+    /// Add a cookie to the response
+    pub fn add_cookie(&mut self, cookie: Cookie) {
+        self.cookies.push(cookie);
+    }
+
+    /// Add multiple cookies to the response
+    pub fn add_cookies(&mut self, cookies: Vec<Cookie>) {
+        self.cookies.extend(cookies);
+    }
+
+    /// Clear all cookies
+    pub fn clear_cookies(&mut self) {
+        self.cookies.clear();
+    }
+
+    /// Get all cookies
+    pub fn cookies(&self) -> &Vec<Cookie> {
+        &self.cookies
+    }
+
     /// Convert response to bytes for transmission
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut response = String::new();
@@ -76,6 +99,11 @@ impl HttpResponse {
         // Headers
         for (name, value) in &self.headers {
             write!(response, "{}: {}\r\n", name, value).unwrap();
+        }
+
+        // Set-Cookie headers
+        for cookie in &self.cookies {
+            write!(response, "Set-Cookie: {}\r\n", cookie.to_header_value()).unwrap();
         }
 
         // Empty line to separate headers from body

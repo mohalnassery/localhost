@@ -7,6 +7,7 @@ use crate::error::{ServerError, ServerResult, HttpStatus};
 use crate::error::pages::ErrorPageManager;
 use crate::http::{HttpRequestParser, HttpResponse};
 use crate::http::methods::MethodHandler;
+use crate::session::{SessionManager, SessionConfig};
 use crate::server::connection::{ConnectionManager, ConnectionState};
 use crate::server::epoll::{Epoll, EpollEvent, EPOLLIN, EPOLLOUT, EPOLLERR, EPOLLHUP, create_epoll_event, get_fd_from_event};
 use crate::server::socket::{
@@ -23,6 +24,7 @@ pub struct Server {
     connection_manager: ConnectionManager,
     method_handler: MethodHandler,
     error_manager: ErrorPageManager,
+    session_manager: SessionManager,
     running: bool,
 }
 
@@ -47,6 +49,7 @@ impl Server {
             connection_manager,
             method_handler,
             error_manager,
+            session_manager: SessionManager::with_defaults(),
             running: false,
         })
     }
