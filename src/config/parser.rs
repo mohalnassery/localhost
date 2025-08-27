@@ -4,7 +4,6 @@
 
 use crate::config::types::*;
 use crate::error::{ServerError, ServerResult};
-use std::collections::HashMap;
 
 /// Parse configuration from string content
 pub fn parse_config(content: &str) -> ServerResult<Config> {

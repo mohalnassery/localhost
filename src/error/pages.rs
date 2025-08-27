@@ -29,7 +29,7 @@ impl ErrorPageManager {
 
     /// Generate an HTTP error response
     pub fn generate_error_response(&self, status: HttpStatus, custom_message: Option<&str>) -> HttpResponse {
-        let status_code = status.as_u16();
+        let _status_code = status.as_u16();
         let error_content = self.generate_error_page(status, custom_message);
 
         let mut response = HttpResponse::html(status, &error_content);

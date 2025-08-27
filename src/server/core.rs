@@ -5,11 +5,11 @@
 use crate::config::Config;
 use crate::error::{ServerError, ServerResult, HttpStatus};
 use crate::error::pages::ErrorPageManager;
-use crate::http::{HttpRequestParser, HttpResponse};
+use crate::http::HttpResponse;
 use crate::http::methods::MethodHandler;
-use crate::session::{SessionManager, SessionConfig};
+use crate::session::SessionManager;
 use crate::server::connection::{ConnectionManager, ConnectionState};
-use crate::server::epoll::{Epoll, EpollEvent, EPOLLIN, EPOLLOUT, EPOLLERR, EPOLLHUP, create_epoll_event, get_fd_from_event};
+use crate::server::epoll::{Epoll, EPOLLIN, EPOLLOUT, EPOLLERR, EPOLLHUP, create_epoll_event, get_fd_from_event};
 use crate::server::socket::{
     accept_connection, bind_socket, close_socket, create_tcp_socket, listen_socket,
 };
@@ -24,6 +24,7 @@ pub struct Server {
     connection_manager: ConnectionManager,
     method_handler: MethodHandler,
     error_manager: ErrorPageManager,
+    #[allow(dead_code)] // TODO: Implement session management
     session_manager: SessionManager,
     running: bool,
 }
@@ -125,7 +126,7 @@ impl Server {
             }
 
             // Cleanup timed out connections
-            self.cleanup_timed_out_connections();
+            let _ = self.cleanup_timed_out_connections();
         }
 
         self.shutdown()
@@ -196,7 +197,7 @@ impl Server {
                     // Client closed connection
                     self.cleanup_connection(fd);
                 }
-                Ok(bytes_read) => {
+                Ok(_bytes_read) => {
                     // Try to parse HTTP request
                     let data = connection.read_buffer.readable_data();
                     let data_len = data.len();
@@ -205,8 +206,7 @@ impl Server {
                             // Consume the parsed data from buffer
                             connection.read_buffer.consume(data_len);
 
-                            // Drop the connection reference before calling update_activity
-                            drop(connection);
+                            // Release the connection reference before calling update_activity
 
                             // Update connection activity
                             self.connection_manager.update_activity(fd, data_len, true);

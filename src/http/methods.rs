@@ -9,7 +9,7 @@ use crate::error::pages::ErrorPageManager;
 use crate::http::{HttpRequest, HttpResponse};
 use crate::routing::{Router, StaticFileServer};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// HTTP method handler
 pub struct MethodHandler {

@@ -4,7 +4,7 @@
 
 use crate::error::HttpStatus;
 use crate::http::request::HttpVersion;
-use crate::session::{Cookie, CookieJar};
+use crate::session::Cookie;
 use std::collections::HashMap;
 use std::fmt::Write;
 

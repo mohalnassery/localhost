@@ -2,7 +2,7 @@
  * Buffer management for I/O operations
  */
 
-use std::io::{self, Read, Write};
+use std::io;
 use std::os::unix::io::RawFd;
 
 /// A growable buffer for I/O operations
@@ -102,7 +102,7 @@ impl Buffer {
         if bytes_read == -1 {
             let error = io::Error::last_os_error();
             match error.raw_os_error() {
-                Some(libc::EAGAIN) | Some(libc::EWOULDBLOCK) => Ok(0),
+                Some(libc::EAGAIN) => Ok(0),
                 _ => Err(error),
             }
         } else {
@@ -128,7 +128,7 @@ impl Buffer {
         if bytes_written == -1 {
             let error = io::Error::last_os_error();
             match error.raw_os_error() {
-                Some(libc::EAGAIN) | Some(libc::EWOULDBLOCK) => Ok(0),
+                Some(libc::EAGAIN) => Ok(0),
                 _ => Err(error),
             }
         } else {

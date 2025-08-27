@@ -98,7 +98,7 @@ pub fn accept_connection(fd: RawFd) -> ServerResult<Option<RawFd>> {
     if client_fd == -1 {
         let error = std::io::Error::last_os_error();
         match error.raw_os_error() {
-            Some(libc::EAGAIN) | Some(libc::EWOULDBLOCK) => Ok(None),
+            Some(libc::EAGAIN) => Ok(None),
             _ => Err(ServerError::Io(error)),
         }
     } else {

@@ -3,7 +3,7 @@
  */
 
 use crate::error::{ServerError, ServerResult};
-use libc::{self, c_int, c_void};
+use libc::{self, c_int};
 use std::os::unix::io::RawFd;
 
 /// Epoll events

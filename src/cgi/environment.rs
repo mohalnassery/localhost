@@ -69,7 +69,7 @@ impl CgiEnvironment {
         env.set("REMOTE_HOST", "localhost");
 
         // Authentication (if present)
-        if let Some(auth) = request.get_header("authorization") {
+        if let Some(_auth) = request.get_header("authorization") {
             env.set("AUTH_TYPE", "Basic"); // Simplified
             env.set("REMOTE_USER", ""); // Would need to parse auth header
         }

@@ -5,7 +5,6 @@
 pub mod pages;
 pub mod types;
 
-pub use types::*;
 pub use pages::*;
 
 use std::fmt;

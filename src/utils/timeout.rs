@@ -2,7 +2,7 @@
  * Timeout and resource management utilities
  */
 
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime};
 use std::collections::HashMap;
 use std::os::unix::io::RawFd;
 
