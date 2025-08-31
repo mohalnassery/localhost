@@ -116,17 +116,49 @@ def main():
                     print(f'<td>File size: {file_size} bytes</td>')
                     print(f'</tr>')
 
-                    # Show first 200 characters of file content if it's text
+                    # Save the uploaded file to www/uploads/
                     if file_size > 0 and hasattr(field, 'value'):
                         try:
-                            if isinstance(field.value, bytes):
-                                preview = field.value.decode('utf-8', errors='replace')[:200]
-                            else:
-                                preview = str(field.value)[:200]
-                            print(f'<tr><td colspan="4"><strong>File preview:</strong><br>')
-                            print(f'<pre style="background: #f5f5f5; padding: 5px; max-height: 100px; overflow: auto;">{preview}{"..." if len(str(field.value)) > 200 else ""}</pre></td></tr>')
-                        except Exception as e:
-                            print(f'<tr><td colspan="4">Could not preview file: {e}</td></tr>')
+                            # Create uploads directory if it doesn't exist
+                            upload_dir = os.path.join(os.getcwd(), 'www', 'uploads')
+                            os.makedirs(upload_dir, exist_ok=True)
+
+                            # Create safe filename (avoid path traversal)
+                            safe_filename = os.path.basename(field.filename)
+                            upload_path = os.path.join(upload_dir, safe_filename)
+
+                            # Handle filename conflicts by adding a number
+                            counter = 1
+                            original_path = upload_path
+                            while os.path.exists(upload_path):
+                                name, ext = os.path.splitext(safe_filename)
+                                upload_path = os.path.join(upload_dir, f"{name}_{counter}{ext}")
+                                counter += 1
+
+                            # Save the file
+                            with open(upload_path, 'wb') as f:
+                                if isinstance(field.value, bytes):
+                                    f.write(field.value)
+                                else:
+                                    f.write(field.value.encode('utf-8'))
+
+                            print(f'<tr><td colspan="4"><strong>✅ File saved successfully!</strong><br>')
+                            print(f'<strong>Location:</strong> {upload_path}<br>')
+                            print(f'<strong>Size:</strong> {file_size} bytes</td></tr>')
+
+                            # Show first 200 characters of file content if it's text
+                            try:
+                                if isinstance(field.value, bytes):
+                                    preview = field.value.decode('utf-8', errors='replace')[:200]
+                                else:
+                                    preview = str(field.value)[:200]
+                                print(f'<tr><td colspan="4"><strong>File preview:</strong><br>')
+                                print(f'<pre style="background: #f5f5f5; padding: 5px; max-height: 100px; overflow: auto;">{preview}{"..." if len(str(field.value)) > 200 else ""}</pre></td></tr>')
+                            except Exception as preview_error:
+                                print(f'<tr><td colspan="4">Could not preview file: {preview_error}</td></tr>')
+
+                        except Exception as save_error:
+                            print(f'<tr><td colspan="4"><strong>❌ Error saving file:</strong> {save_error}</td></tr>')
                 else:
                     # This is a regular form field
                     value = form.getvalue(key)
