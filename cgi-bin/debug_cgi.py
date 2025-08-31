@@ -35,7 +35,6 @@ def main():
     print('</div>')
     
     # Read stdin content once and store it (as binary data)
-    stdin_data = None
     stdin_bytes = None
     print('<div class="section">')
     print('<h2>STDIN Content:</h2>')
@@ -44,20 +43,18 @@ def main():
         stdin_bytes = sys.stdin.buffer.read()
         if stdin_bytes:
             print(f'<pre>Length: {len(stdin_bytes)} bytes\n')
-            # Convert to string for display, handling binary data safely
-            try:
-                stdin_data = stdin_bytes.decode('utf-8', errors='replace')
-                display_data = stdin_data[:500]
-                # Replace non-printable characters for safe HTML display
-                safe_data = ''.join(c if ord(c) >= 32 and ord(c) < 127 else f'\\x{ord(c):02x}' for c in display_data)
-                print(f'Content: {safe_data}</pre>')
-                if len(stdin_data) > 500:
-                    print('<p>... (truncated)</p>')
-            except Exception as decode_error:
-                print(f'<p>Binary data (cannot decode as UTF-8): {decode_error}</p>')
-                # Show hex dump of first 100 bytes
-                hex_data = ' '.join(f'{b:02x}' for b in stdin_bytes[:100])
-                print(f'<pre>Hex dump (first 100 bytes): {hex_data}</pre>')
+            # For display purposes, show first 500 bytes safely
+            display_bytes = stdin_bytes[:500]
+            # Convert bytes to safe display format
+            safe_data = ''
+            for b in display_bytes:
+                if 32 <= b < 127:  # Printable ASCII
+                    safe_data += chr(b)
+                else:
+                    safe_data += f'\\x{b:02x}'
+            print(f'Content: {safe_data}</pre>')
+            if len(stdin_bytes) > 500:
+                print('<p>... (truncated)</p>')
         else:
             print('<p>No STDIN data received</p>')
     except Exception as e:
