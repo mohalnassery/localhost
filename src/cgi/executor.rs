@@ -85,6 +85,16 @@ impl CgiExecutor {
 
         // Write input data to stdin if present
         if !input_data.is_empty() {
+            // Debug: Print first 100 bytes of input data
+            let debug_data = if input_data.len() > 100 {
+                &input_data[..100]
+            } else {
+                input_data
+            };
+            eprintln!("CGI Debug: Writing {} bytes to stdin. First 100 bytes: {:?}",
+                     input_data.len(),
+                     String::from_utf8_lossy(debug_data));
+
             if let Some(stdin) = child.stdin.as_mut() {
                 stdin.write_all(input_data)
                     .map_err(|e| ServerError::Cgi(format!("Failed to write to CGI stdin: {}", e)))?;

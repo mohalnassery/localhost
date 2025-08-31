@@ -200,22 +200,25 @@ impl Server {
                 Ok(_bytes_read) => {
                     // Try to parse HTTP request
                     let data = connection.read_buffer.readable_data();
-                    let data_len = data.len();
                     match connection.http_parser.parse(data) {
-                        Ok(Some(request)) => {
-                            // Consume the parsed data from buffer
-                            connection.read_buffer.consume(data_len);
+                        Ok((Some(request), consumed)) => {
+                            // Consume only the parsed data from buffer
+                            connection.read_buffer.consume(consumed);
 
                             // Release the connection reference before calling update_activity
 
                             // Update connection activity
-                            self.connection_manager.update_activity(fd, data_len, true);
+                            self.connection_manager.update_activity(fd, consumed, true);
 
                             // Process the request and generate response
                             self.process_http_request(fd, request)?;
                         }
-                        Ok(None) => {
+                        Ok((None, consumed)) => {
                             // Need more data to complete parsing
+                            // Consume any processed data
+                            if consumed > 0 {
+                                connection.read_buffer.consume(consumed);
+                            }
                         }
                         Err(e) => {
                             eprintln!("HTTP parsing error on fd {}: {}", fd, e);

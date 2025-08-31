@@ -151,7 +151,8 @@ pub struct HttpRequestParser {
     state: ParseState,
     request: HttpRequest,
     body_bytes_remaining: Option<usize>,
-    buffer: String,
+    buffer: Vec<u8>,
+    headers_end_pos: Option<usize>,
 }
 
 impl HttpRequestParser {
@@ -160,23 +161,26 @@ impl HttpRequestParser {
             state: ParseState::RequestLine,
             request: HttpRequest::new(),
             body_bytes_remaining: None,
-            buffer: String::new(),
+            buffer: Vec::new(),
+            headers_end_pos: None,
         }
     }
 
     /// Parse HTTP request from buffer data
-    pub fn parse(&mut self, data: &[u8]) -> ServerResult<Option<HttpRequest>> {
-        // Convert bytes to string (assuming UTF-8 for headers)
-        let data_str = str::from_utf8(data)
-            .map_err(|_| ServerError::Http("Invalid UTF-8 in request".to_string()))?;
-
-        self.buffer.push_str(data_str);
+    /// Returns (Option<HttpRequest>, bytes_consumed)
+    pub fn parse(&mut self, data: &[u8]) -> ServerResult<(Option<HttpRequest>, usize)> {
+        let initial_buffer_len = self.buffer.len();
+        // Append new data to buffer
+        self.buffer.extend_from_slice(data);
 
         loop {
             match self.state {
                 ParseState::RequestLine => {
-                    if let Some(line_end) = self.buffer.find("\r\n") {
-                        let line = self.buffer[..line_end].to_string();
+                    if let Some(line_end) = self.find_sequence(&self.buffer, b"\r\n") {
+                        let line_bytes = &self.buffer[..line_end];
+                        let line = str::from_utf8(line_bytes)
+                            .map_err(|_| ServerError::Http("Invalid UTF-8 in request line".to_string()))?
+                            .to_string();
                         self.buffer.drain(..line_end + 2);
                         self.parse_request_line(&line)?;
                         self.state = ParseState::Headers;
@@ -185,8 +189,11 @@ impl HttpRequestParser {
                     }
                 }
                 ParseState::Headers => {
-                    if let Some(headers_end) = self.buffer.find("\r\n\r\n") {
-                        let headers_str = self.buffer[..headers_end].to_string();
+                    if let Some(headers_end) = self.find_sequence(&self.buffer, b"\r\n\r\n") {
+                        let headers_bytes = &self.buffer[..headers_end];
+                        let headers_str = str::from_utf8(headers_bytes)
+                            .map_err(|_| ServerError::Http("Invalid UTF-8 in headers".to_string()))?
+                            .to_string();
                         self.buffer.drain(..headers_end + 4);
                         self.parse_headers(&headers_str)?;
 
@@ -195,6 +202,13 @@ impl HttpRequestParser {
                             if content_length > 0 {
                                 self.body_bytes_remaining = Some(content_length);
                                 self.state = ParseState::Body;
+
+                                // Debug: Print buffer state after headers
+                                eprintln!("HTTP Parser Debug: After headers, buffer has {} bytes, expecting {} body bytes",
+                                         self.buffer.len(), content_length);
+                                let debug_remaining = if self.buffer.len() > 50 { &self.buffer[..50] } else { &self.buffer };
+                                eprintln!("HTTP Parser Debug: Remaining buffer: {:?}",
+                                         String::from_utf8_lossy(debug_remaining));
                             } else {
                                 self.state = ParseState::Complete;
                             }
@@ -212,8 +226,15 @@ impl HttpRequestParser {
                     if let Some(remaining) = self.body_bytes_remaining {
                         let available = self.buffer.len();
                         if available >= remaining {
-                            // We have all the body data
-                            self.request.body = self.buffer[..remaining].as_bytes().to_vec();
+                            // We have all the body data - keep it as binary
+                            self.request.body = self.buffer[..remaining].to_vec();
+
+                            // Debug: Print what we're extracting as body
+                            let debug_body = if remaining > 100 { &self.buffer[..100] } else { &self.buffer[..remaining] };
+                            eprintln!("HTTP Parser Debug: Extracting {} bytes as body. First 100 bytes: {:?}",
+                                     remaining,
+                                     String::from_utf8_lossy(debug_body));
+
                             self.buffer.drain(..remaining);
                             self.state = ParseState::Complete;
                         } else {
@@ -225,12 +246,19 @@ impl HttpRequestParser {
                     }
                 }
                 ParseState::Complete => {
-                    return Ok(Some(self.request.clone()));
+                    let consumed = initial_buffer_len + data.len() - self.buffer.len();
+                    return Ok((Some(self.request.clone()), consumed));
                 }
             }
         }
 
-        Ok(None) // Need more data
+        let consumed = initial_buffer_len + data.len() - self.buffer.len();
+        Ok((None, consumed)) // Need more data
+    }
+
+    /// Find a byte sequence in a buffer
+    fn find_sequence(&self, buffer: &[u8], pattern: &[u8]) -> Option<usize> {
+        buffer.windows(pattern.len()).position(|window| window == pattern)
     }
 
     /// Parse the HTTP request line
@@ -316,6 +344,7 @@ impl HttpRequestParser {
         self.request = HttpRequest::new();
         self.body_bytes_remaining = None;
         self.buffer.clear();
+        self.headers_end_pos = None;
     }
 
     /// Check if parsing is complete
